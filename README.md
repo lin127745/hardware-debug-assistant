@@ -12,8 +12,9 @@ Built on Atlassian Forge for Codegeist 2026 (Apps for Specialized Industries).
 
 ## Install
 1. Open the installation link and install on **Jira** (required), then on **Confluence** on the same site.
-2. In Confluence, create a space with key **`HWKB`** for the knowledge base.
-3. Open any Jira work item, open Rovo chat, pick **Hardware Debug Assistant**, and say "Start debugging this board".
+2. Open any Jira work item, open Rovo chat, pick **Hardware Debug Assistant**, and say "Start debugging this board".
+
+The knowledge base space (key **`HWKB`**) is created automatically the first time a case is closed. To use a different space, tell the agent its key when closing the case.
 
 ## Development
 ```

@@ -270,7 +270,7 @@ modules:
           title: Confluence space key
           type: string
           required: false
-          description: Knowledge base space key. Omit to use the default HWKB space.
+          description: Knowledge base space key. Omit to use the default HWKB space; it is created automatically if it does not exist.
   function:
     - key: closeCase
       handler: index.closeCase
@@ -288,6 +288,7 @@ permissions:
     - write:jira-work
     - read:confluence-space.summary
     - write:confluence-content
+    - write:confluence-space
     - read:space:confluence
     - write:page:confluence
 app:

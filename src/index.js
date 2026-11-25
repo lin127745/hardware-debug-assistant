@@ -187,6 +187,19 @@ function reportPage({ issueKey, issueUrl, summary, description, debugCase }) {
 <table><tbody><tr><th>Step</th><th>Signal / test point</th><th>Expected</th><th>Measured</th><th>Instrument</th><th>Verdict</th></tr>${rows}</tbody></table>`;
 }
 
+// First close on a new site: create the knowledge base space so admins have no setup step.
+async function createKnowledgeBaseSpace(spaceKey) {
+  const created = await confluence(route`/wiki/rest/api/space`, {
+    method: 'POST',
+    body: JSON.stringify({
+      key: spaceKey,
+      name: spaceKey === DEFAULT_SPACE_KEY ? 'Hardware Debug Knowledge Base' : `Hardware Debug Knowledge Base (${spaceKey})`,
+      description: { plain: { value: 'Closed hardware debug cases published by Hardware Debug Assistant.', representation: 'plain' } },
+    }),
+  });
+  return { id: String(created.id), key: created.key };
+}
+
 export async function closeCase(payload) {
   const issueKey = resolveIssueKey(payload);
   const spaceKey = (payload.spaceKey || DEFAULT_SPACE_KEY).toUpperCase();
@@ -197,8 +210,7 @@ export async function closeCase(payload) {
     jira(route`/rest/api/3/serverInfo`),
     confluence(route`/wiki/api/v2/spaces?keys=${spaceKey}`),
   ]);
-  const space = spaces.results?.[0];
-  if (!space) throw new Error(`Confluence space ${spaceKey} not found. Create it or pass another space key.`);
+  const space = spaces.results?.[0] || (await createKnowledgeBaseSpace(spaceKey));
 
   Object.assign(debugCase, {
     rootCause: payload.rootCause,
