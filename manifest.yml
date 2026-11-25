@@ -1,0 +1,305 @@
+modules:
+  rovo:agent:
+    - key: hardware-debug-assistant
+      name: Hardware Debug Assistant
+      description: Guides hardware engineers through a structured, bottom-up board bring-up and debug process inside a Jira work item, logs every measurement, and surfaces similar past cases.
+      prompt: >
+        You are Hardware Debug Assistant, an experienced electronics engineer who
+        helps users debug failing circuit boards inside a Jira work item.
+
+        ## How you work
+        - Every debug case belongs to exactly one Jira work item. Never guess,
+          search for or invent a work item key. Only pass issueKey when the user
+          typed that key in this conversation; otherwise omit it and the work item
+          the user is viewing is used.
+        - Always start by calling get-debug-case to load the current work item's
+          debug case (intake info, current step, logged measurements). Resume from
+          the saved current step instead of starting over.
+        - If get-debug-case reports NO_WORK_ITEM, do not ask any debugging
+          questions and do not call any other action. Ask the user to open the
+          board's work item (or create one) and start the chat from there, or to
+          type its key.
+        - For intake, first take everything the work item summary and description
+          already say. Ask only for the items that are still missing, as one short
+          list, and never re-ask what the description already answers.
+        - Debug bottom-up. Never move to the next layer until the current one passes:
+          0 Intake -> 1 Visual inspection (unpowered) -> 2 Power -> 3 Clock ->
+          4 Reset & boot -> 5 Debug interface -> 6 Firmware & communication ->
+          7 Intermittent & environmental.
+        - Ask for exactly ONE measurement per reply: one signal at one test point.
+          Never number or list several measurements in the same reply; the next one
+          comes only after the user reports this one. For that one measurement
+          state: what to measure, where (test point / pin), the expected value, and
+          which instrument to use. If the expected value depends on the design (e.g.
+          rail voltage, crystal frequency), ask the user for the spec value.
+        - When calling log-measurement, always fill expected and instrument with the
+          values from your measurement request (or what the user reported). If the
+          user reports several values at once, log each signal as its own
+          measurement.
+        - Default tolerance for supply rails is +/-5% unless the user gives one.
+        - When the user reports a result, call log-measurement immediately, decide
+          PASS / FAIL / INCONCLUSIVE, then call update-case with the new currentStep
+          and, if relevant, suspectedCause.
+        - When something fails, narrow down the likely causes for that layer and
+          propose the next discriminating measurement.
+        - Early in the session, and whenever a failure is found, call
+          find-similar-cases with the board name and symptom keywords and mention
+          relevant past cases (with their keys).
+        - When the root cause is confirmed and the fix has been verified (or the user
+          says the case is solved), summarize root cause, fix and verification, then
+          call close-case. Share the knowledge base page link it returns.
+        - Be concise, practical and safety-aware (e.g. check for shorts before
+          powering, use a current-limited supply).
+
+        ## Step checklist
+        0 Intake (only what the description does not already state): board name,
+          revision, serial, firmware version; symptom type
+          (dead / powered but not booting / intermittent crash / one peripheral not
+          working / overheating); units affected (one unit suggests assembly or a
+          part, a whole batch suggests design or BOM); first power-up or not; recent
+          changes (PCB rev, part substitution, firmware, assembler); available
+          instruments. Save these with update-case.
+        1 Visual (unpowered): solder bridges, open joints, component orientation
+          (electrolytic caps, diodes, IC pin 1), missing parts, burn marks.
+          Resistance of each rail to GND: near 0 ohm means a short; find it before
+          powering.
+        2 Power: power up with a current-limited supply and compare input current to
+          expectation (at the limit = short or damaged part, find the hot spot;
+          near zero = input protection, fuse, switch, connector). Measure every rail
+          at the regulator output and at the load. Low: overload, regulator EN pin
+          not asserted, wrong feedback resistors. High: open feedback, damaged
+          regulator. Check ripple, power-up sequencing and power-good signals with a
+          scope.
+        3 Clock: does the crystal/oscillator start, frequency, amplitude. Beware
+          probe loading stopping a crystal; prefer a buffered clock output or a 10x
+          probe. Not oscillating: load capacitor values, crystal spec, soldering,
+          MCU clock configuration. Check PLL lock if used.
+        4 Reset & boot: reset pin level (stuck in reset?), reset release timing vs
+          supply ramp, boot strap pins, brown-out detector repeatedly tripping.
+        5 Debug interface: can the JTAG/SWD probe connect and read the chip ID?
+          If not: wiring, debug pins reconfigured as GPIO by firmware, locked chip.
+        6 Firmware & communication: UART boot log (where does it stop?), I2C
+          (pull-ups present, ACK, address), SPI (CS, clock polarity/phase mode,
+          clock rate). Capture with a logic analyzer and compare to datasheet
+          timing. A single dead peripheral: check its supply, reset and enable pins.
+        7 Intermittent: temperature (heat/cool), load (supply droop at high current),
+          mechanical (press/vibration -> cold joints, connectors), ESD (after
+          touching or plugging).
+      conversationStarters:
+        - Start debugging this board
+        - Log a measurement
+        - Find similar past cases
+        - Close this case and write it to the knowledge base
+      actions:
+        - get-debug-case
+        - update-case
+        - log-measurement
+        - find-similar-cases
+        - close-case
+  action:
+    - key: get-debug-case
+      name: Get debug case
+      function: getDebugCase
+      actionVerb: GET
+      description: >
+        Loads the debug case for the current Jira work item: summary, description,
+        saved intake information, current debug step, suspected cause and all
+        logged measurements.
+      inputs:
+        issueKey:
+          title: Work item key
+          type: string
+          required: false
+          description: The Jira work item key. Omit when the user is viewing the work item.
+    - key: update-case
+      name: Update debug case
+      function: updateCase
+      actionVerb: UPDATE
+      description: >
+        Saves intake information and progress for the debug case on the current
+        Jira work item. Only the fields provided are changed.
+      inputs:
+        issueKey:
+          title: Work item key
+          type: string
+          required: false
+          description: The Jira work item key. Omit when the user is viewing the work item.
+        currentStep:
+          title: Current step
+          type: string
+          required: false
+          description: The step now being worked on, e.g. "2 Power".
+        board:
+          title: Board
+          type: string
+          required: false
+          description: Board name.
+        revision:
+          title: Revision
+          type: string
+          required: false
+          description: Board revision.
+        symptomType:
+          title: Symptom type
+          type: string
+          required: false
+          description: One of dead, no-boot, intermittent, peripheral, overheating.
+        unitsAffected:
+          title: Units affected
+          type: string
+          required: false
+          description: How many units show the problem, e.g. "1 of 10".
+        recentChanges:
+          title: Recent changes
+          type: string
+          required: false
+          description: What changed recently (PCB rev, parts, firmware, assembler).
+        instruments:
+          title: Instruments
+          type: string
+          required: false
+          description: Instruments the user has available.
+        suspectedCause:
+          title: Suspected cause
+          type: string
+          required: false
+          description: Current best hypothesis for the root cause.
+    - key: log-measurement
+      name: Log measurement
+      function: logMeasurement
+      actionVerb: CREATE
+      description: >
+        Records one measurement on the current Jira work item's debug case and
+        posts it as a comment.
+      inputs:
+        issueKey:
+          title: Work item key
+          type: string
+          required: false
+          description: The Jira work item key. Omit when the user is viewing the work item.
+        step:
+          title: Step
+          type: string
+          required: true
+          description: Debug step, e.g. "2 Power".
+        signal:
+          title: Signal / test point
+          type: string
+          required: true
+          description: What was measured and where, e.g. "3V3 at U5 pin 2".
+        expected:
+          title: Expected
+          type: string
+          required: true
+          description: Expected value including tolerance, e.g. "3.3 V +/-5%". Taken from the measurement request.
+        measured:
+          title: Measured
+          type: string
+          required: true
+          description: Measured value with unit.
+        instrument:
+          title: Instrument
+          type: string
+          required: true
+          description: Instrument used, e.g. "DMM" or "100 MHz scope". Taken from the measurement request.
+        verdict:
+          title: Verdict
+          type: string
+          required: true
+          description: PASS, FAIL or INCONCLUSIVE.
+    - key: find-similar-cases
+      name: Find similar cases
+      function: findSimilarCases
+      actionVerb: GET
+      description: >
+        Searches other hardware debug cases in Jira for similar symptoms and returns
+        their keys, summaries, root causes, fixes and failed measurements, resolved
+        cases first. Pass short keywords (board name, rail or bus names, symptom
+        words), not a full sentence.
+      inputs:
+        keywords:
+          title: Keywords
+          type: string
+          required: true
+          description: Board name and symptom keywords, e.g. "sensor board 3V3 low".
+        issueKey:
+          title: Current work item key
+          type: string
+          required: false
+          description: Excluded from results. Omit when the user is viewing the work item.
+    - key: close-case
+      name: Close case to knowledge base
+      function: closeCase
+      actionVerb: CREATE
+      description: >
+        Records the confirmed root cause, fix and verification on the current Jira
+        work item and publishes a debug report page (symptoms, measurements, root
+        cause, fix) to the Confluence hardware debug knowledge base.
+      inputs:
+        issueKey:
+          title: Work item key
+          type: string
+          required: false
+          description: The Jira work item key. Omit when the user is viewing the work item.
+        rootCause:
+          title: Root cause
+          type: string
+          required: true
+          description: The confirmed root cause.
+        fix:
+          title: Fix
+          type: string
+          required: true
+          description: What was changed to fix the problem.
+        verification:
+          title: Verification
+          type: string
+          required: true
+          description: How the fix was verified, e.g. "3V3 now 3.30 V, board boots".
+        subsystem:
+          title: Subsystem
+          type: string
+          required: true
+          description: One of power, clock, reset, debug-interface, firmware, communication, environmental.
+        rootCauseType:
+          title: Root cause type
+          type: string
+          required: true
+          description: One of design, assembly, component, firmware.
+        spaceKey:
+          title: Confluence space key
+          type: string
+          required: false
+          description: Knowledge base space key. Omit to use the default HWKB space.
+  function:
+    - key: closeCase
+      handler: index.closeCase
+    - key: getDebugCase
+      handler: index.getDebugCase
+    - key: updateCase
+      handler: index.updateCase
+    - key: logMeasurement
+      handler: index.logMeasurement
+    - key: findSimilarCases
+      handler: index.findSimilarCases
+permissions:
+  scopes:
+    - read:jira-work
+    - write:jira-work
+    - read:confluence-space.summary
+    - write:confluence-content
+    - read:space:confluence
+    - write:page:confluence
+app:
+  # One installation spans Jira (required) and Confluence (optional), so the agent is
+  # registered once and can still write knowledge base pages.
+  compatibility:
+    jira:
+      required: true
+    confluence:
+      required: false
+  runtime:
+    name: nodejs24.x
+    memoryMB: 256
+    architecture: arm64
+  id: ari:cloud:ecosystem::app/2392d2b9-c885-4e22-a8c7-bb0697a1df74
