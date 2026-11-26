@@ -11,6 +11,8 @@ Built on Atlassian Forge for Codegeist 2026 (Apps for Specialized Industries).
 - **Knowledge base**: closing a case writes a Confluence report page (summary, symptom, root cause, fix, verification, full measurement log) and labels both the page and the work item.
 
 ## Install
+Requirements: a Jira + Confluence Cloud site with **Rovo** available (Rovo agents are not offered on Free plans; Standard or higher, or a Forge demo site, works), and site admin rights.
+
 1. Open the installation link and install on **Jira** (required), then on **Confluence** on the same site.
 2. Open any Jira work item, open Rovo chat, pick **Hardware Debug Assistant**, and say "Start debugging this board".
 
